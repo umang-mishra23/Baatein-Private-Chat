@@ -1,0 +1,208 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+enum SmsDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum ConversationStatus {
+  ACTIVE
+  DELETED
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  DELETED
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username           String?              @db.VarChar(32)
+  usernameNormalized String?              @unique @db.VarChar(32)
+  avatarUrl          String?              @db.VarChar(500)
+  status             UserStatus           @default(ACTIVE)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  deletedAt          DateTime?
+  sessions           Session[]
+  sentInvitations    Invitation[]         @relation("InvitationSender")
+  initiatedConvos    Conversation[]       @relation("ConversationCreator")
+  memberships        ConversationMember[]
+  sentMessages       Message[]            @relation("MessageSender")
+  receipts           MessageReceipt[]
+  blocksGiven        BlockedUser[]        @relation("Blocker")
+  blocksReceived     BlockedUser[]        @relation("Blocked")
+  reportsMade        Report[]             @relation("Reporter")
+  securityEvents     SecurityEvent[]
+
+  @@index([status, createdAt])
+}
+
+model Session {
+  idHash        String    @id @db.Char(64)
+  userId        String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  lastSeenAt    DateTime  @default(now())
+  userAgentHash String?   @db.Char(64)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model Invitation {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tokenHash                String            @unique @db.Char(64)
+  senderId                 String            @db.Uuid
+  recipientLookupHash      String            @db.Char(64)
+  recipientPhoneEncrypted  String?
+  conversationId           String?           @db.Uuid
+  initialMessageCiphertext String?
+  status                   InvitationStatus  @default(PENDING)
+  smsDeliveryStatus        SmsDeliveryStatus @default(PENDING)
+  smsProviderMessageId     String?           @db.VarChar(128)
+  lastSentAt               DateTime?
+  resendCount              Int               @default(0)
+  createdAt                DateTime          @default(now())
+  expiresAt                DateTime
+  usedAt                   DateTime?
+  cancelledAt              DateTime?
+  sender                   User              @relation("InvitationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  conversation             Conversation?     @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([senderId, status, createdAt])
+  @@index([senderId, status, expiresAt])
+  @@index([recipientLookupHash, status, expiresAt])
+}
+
+model Conversation {
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdById String               @db.Uuid
+  status      ConversationStatus   @default(ACTIVE)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  deletedAt   DateTime?
+  createdBy   User                 @relation("ConversationCreator", fields: [createdById], references: [id])
+  members     ConversationMember[]
+  messages    Message[]
+  invitations Invitation[]
+
+  @@index([createdById, updatedAt])
+}
+
+model ConversationMember {
+  conversationId    String       @db.Uuid
+  userId            String       @db.Uuid
+  joinedAt          DateTime     @default(now())
+  leftAt            DateTime?
+  lastReadMessageId String?      @db.Uuid
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId, joinedAt])
+}
+
+model Message {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId  String           @db.Uuid
+  senderId        String           @db.Uuid
+  clientMessageId String?          @db.Uuid
+  ciphertext      String
+  createdAt       DateTime         @default(now())
+  editedAt        DateTime?
+  deletedAt       DateTime?
+  sender          User             @relation("MessageSender", fields: [senderId], references: [id])
+  conversation    Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  receipts        MessageReceipt[]
+
+  @@unique([senderId, clientMessageId])
+  @@index([conversationId, createdAt, id])
+  @@index([senderId, createdAt])
+}
+
+model MessageReceipt {
+  messageId String        @db.Uuid
+  userId    String        @db.Uuid
+  status    MessageStatus
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  message   Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@index([userId, updatedAt])
+}
+
+model BlockedUser {
+  blockerId     String   @db.Uuid
+  blockedUserId String   @db.Uuid
+  createdAt     DateTime @default(now())
+  blocker       User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedUser   User     @relation("Blocked", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedUserId])
+  @@index([blockedUserId])
+}
+
+model Report {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId     String       @db.Uuid
+  reportedUserId String?      @db.Uuid
+  conversationId String?      @db.Uuid
+  reason         String       @db.VarChar(64)
+  details        String?      @db.VarChar(2000)
+  status         ReportStatus @default(OPEN)
+  createdAt      DateTime     @default(now())
+  reviewedAt     DateTime?
+  reporter       User         @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+model SecurityEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?  @db.Uuid
+  type      String   @db.VarChar(64)
+  outcome   String   @db.VarChar(32)
+  requestId String?  @db.VarChar(64)
+  ipHash    String?  @db.Char(64)
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([type, createdAt])
+  @@index([userId, createdAt])
+}

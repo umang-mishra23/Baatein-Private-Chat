@@ -1,0 +1,5 @@
+import Link from "next/link";
+import { ArrowLeft, Clock3, Home, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+export default function ExpiredInvitePage() { return <main className="grid min-h-dvh place-items-center px-4 py-10"><div className="w-full max-w-md rounded-[2rem] border border-border bg-card p-8 text-center shadow-xl"><div className="mx-auto grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground"><Clock3 className="size-6" /></div><h1 className="mt-6 text-2xl font-semibold tracking-tight">Invitation expired</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">This secure invitation has already been used, cancelled, or reached its expiry time.</p><div className="mt-7 grid gap-2 sm:grid-cols-2"><Link href="/start"><Button className="w-full"><RefreshCw /> Request new invitation</Button></Link><Link href="/"><Button className="w-full" variant="outline"><Home /> Return home</Button></Link></div><Link href="/" className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Back</Link></div></main>; }

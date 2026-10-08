@@ -1,0 +1,1 @@
+export function DashboardAvatar({ label = "U" }: { label?: string }) { return <div className="grid size-9 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{label.slice(0,1).toUpperCase()}</div>; }

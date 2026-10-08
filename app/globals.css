@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --background: oklch(0.985 0.004 240);
+  --foreground: oklch(0.18 0.02 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 255);
+  --muted: oklch(0.955 0.008 240);
+  --muted-foreground: oklch(0.48 0.02 255);
+  --primary: oklch(0.41 0.18 263);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.94 0.02 260);
+  --secondary-foreground: oklch(0.24 0.05 260);
+  --border: oklch(0.90 0.01 240);
+  --input: oklch(0.90 0.01 240);
+  --ring: oklch(0.55 0.16 263);
+  --success: oklch(0.62 0.15 154);
+  --radius: 1rem;
+}
+
+.dark {
+  --background: oklch(0.115 0.018 255);
+  --foreground: oklch(0.96 0.006 240);
+  --card: oklch(0.15 0.02 255);
+  --card-foreground: oklch(0.96 0.006 240);
+  --muted: oklch(0.20 0.02 255);
+  --muted-foreground: oklch(0.70 0.02 250);
+  --primary: oklch(0.70 0.14 265);
+  --primary-foreground: oklch(0.13 0.02 255);
+  --secondary: oklch(0.22 0.03 260);
+  --secondary-foreground: oklch(0.92 0.01 250);
+  --border: oklch(0.28 0.02 255);
+  --input: oklch(0.28 0.02 255);
+  --ring: oklch(0.70 0.14 265);
+  --success: oklch(0.72 0.15 154);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--background); color: var(--foreground); }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+::selection { background: color-mix(in oklch, var(--primary) 20%, transparent); }
+
+.focus-ring:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

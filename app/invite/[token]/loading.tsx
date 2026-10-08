@@ -1,0 +1,1 @@
+export default function Loading() { return <main className="grid min-h-dvh place-items-center p-6"><div className="h-72 w-full max-w-md animate-pulse rounded-[2rem] bg-muted" aria-label="Loading invitation" /></main>; }
