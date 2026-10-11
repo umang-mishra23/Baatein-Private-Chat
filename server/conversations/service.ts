@@ -26,9 +26,9 @@ function decodeCursor(cursor?: string) {
 async function requireMembership(userId: string, conversationId: string) {
   const membership = await db.conversationMember.findUnique({
     where: { conversationId_userId: { conversationId, userId } },
-    select: { conversationId: true, userId: true, leftAt: true, conversation: { select: { id: true, status: true } } },
+    select: { conversationId: true, userId: true, leftAt: true, hiddenAt: true, conversation: { select: { id: true, status: true } } },
   });
-  if (!membership || membership.leftAt || membership.conversation.status !== "ACTIVE") throw new Error("CONVERSATION_FORBIDDEN");
+  if (!membership || membership.leftAt || membership.hiddenAt || membership.conversation.status !== "ACTIVE") throw new Error("CONVERSATION_FORBIDDEN");
   return membership;
 }
 
@@ -49,6 +49,7 @@ export async function getConversationForUser(userId: string, conversationId: str
   if (!conversation) throw new Error("CONVERSATION_FORBIDDEN");
   const peer = conversation.members.find((member) => member.userId !== userId);
   if (!peer || peer.user.status !== "ACTIVE" || !peer.user.username) throw new Error("CONVERSATION_UNAVAILABLE");
+  await assertNotBlocked(userId, peer.userId);
   return {
     id: conversation.id,
     createdAt: conversation.createdAt,
@@ -59,7 +60,7 @@ export async function getConversationForUser(userId: string, conversationId: str
 
 export async function listConversations(userId: string) {
   const rows = await db.conversation.findMany({
-    where: { status: "ACTIVE", members: { some: { userId, leftAt: null } } },
+    where: { status: "ACTIVE", members: { some: { userId, leftAt: null, hiddenAt: null } } },
     orderBy: { updatedAt: "desc" },
     take: 50,
     select: {
@@ -73,9 +74,14 @@ export async function listConversations(userId: string) {
       messages: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1, select: { id: true, senderId: true, ciphertext: true, createdAt: true, deletedAt: true } },
     },
   });
+  const blocks = await db.blockedUser.findMany({
+    where: { OR: [{ blockerId: userId }, { blockedUserId: userId }] },
+    select: { blockerId: true, blockedUserId: true },
+  });
+  const blockedPeers = new Set(blocks.map((row) => row.blockerId === userId ? row.blockedUserId : row.blockerId));
   return rows.flatMap((row) => {
     const peer = row.members.find((member) => member.userId !== userId);
-    if (!peer || peer.user.status !== "ACTIVE" || !peer.user.username) return [];
+    if (!peer || blockedPeers.has(peer.userId) || peer.user.status !== "ACTIVE" || !peer.user.username) return [];
     const last = row.messages[0];
     return [{
       id: row.id,
@@ -94,6 +100,8 @@ export async function listConversations(userId: string) {
 
 export async function listMessages(userId: string, conversationId: string, cursor?: string, requestedLimit?: number) {
   await requireMembership(userId, conversationId);
+  const peer = await getConversationPeer(userId, conversationId);
+  await assertNotBlocked(userId, peer.userId);
   const limit = Math.min(Math.max(requestedLimit ?? MESSAGE_PAGE_SIZE, 1), 100);
   const decoded = decodeCursor(cursor);
   if (cursor && !decoded) throw new Error("INVALID_CURSOR");
@@ -168,6 +176,7 @@ export async function createMessage(userId: string, conversationId: string, plai
   if (!trimmed || trimmed.length > MESSAGE_MAX_LENGTH || !/^[0-9a-f-]{36}$/i.test(clientMessageId)) throw new Error("INVALID_MESSAGE");
   const membership = await requireMembership(userId, conversationId);
   const peer = await getConversationPeer(userId, conversationId);
+  await assertNotBlocked(userId, peer.userId);
 
   const existing = await db.message.findFirst({
     where: { senderId: userId, clientMessageId },
@@ -183,13 +192,18 @@ export async function createMessage(userId: string, conversationId: string, plai
     };
   }
 
-  await assertNotBlocked(userId, peer.userId);
   const message = await db.$transaction(async (tx) => {
     const created = await tx.message.create({
       data: { conversationId, senderId: userId, clientMessageId, ciphertext: encryptMessage(trimmed) },
       select: { id: true, conversationId: true, senderId: true, ciphertext: true, createdAt: true, editedAt: true, deletedAt: true, sender: { select: { username: true } } },
     });
     await tx.messageReceipt.create({ data: { messageId: created.id, userId: peer.userId, status: MessageStatus.SENT } });
+    // A conversation hidden by a user reappears when a new message arrives.
+    // A blocked peer cannot reach this transaction because assertNotBlocked runs above.
+    await tx.conversationMember.updateMany({
+      where: { conversationId, userId: peer.userId, leftAt: null, hiddenAt: { not: null } },
+      data: { hiddenAt: null },
+    });
     await tx.conversation.update({ where: { id: membership.conversationId }, data: { updatedAt: created.createdAt } });
     return created;
   });
@@ -212,6 +226,7 @@ export async function createMessage(userId: string, conversationId: string, plai
 export async function markConversationDelivered(userId: string, conversationId: string) {
   const membership = await requireMembership(userId, conversationId);
   const peer = await getConversationPeer(userId, conversationId);
+  await assertNotBlocked(userId, peer.userId);
   const candidates = await db.messageReceipt.findMany({
     where: { userId, status: MessageStatus.SENT, message: { conversationId, senderId: peer.userId } },
     orderBy: { updatedAt: "asc" },
@@ -228,6 +243,7 @@ export async function markConversationRead(userId: string, conversationId: strin
   await requireMembership(userId, conversationId);
   const target = await db.message.findFirst({ where: { id: messageId, conversationId }, select: { id: true, senderId: true, createdAt: true } });
   if (!target) throw new Error("MESSAGE_NOT_FOUND");
+  await assertNotBlocked(userId, target.senderId);
   if (target.senderId === userId) return { messageIds: [], peerId: target.senderId };
   const unread = await db.message.findMany({
     where: { conversationId, senderId: { not: userId }, createdAt: { lte: target.createdAt }, receipts: { some: { userId, status: { in: [MessageStatus.SENT, MessageStatus.DELIVERED] } } } },
@@ -242,7 +258,12 @@ export async function markConversationRead(userId: string, conversationId: strin
 
 export async function markMessageDeleted(userId: string, conversationId: string, messageId: string) {
   await requireMembership(userId, conversationId);
-  const updated = await db.message.updateMany({ where: { id: messageId, conversationId, senderId: userId, deletedAt: null }, data: { deletedAt: new Date() } });
+  const peer = await getConversationPeer(userId, conversationId);
+  await assertNotBlocked(userId, peer.userId);
+  const updated = await db.message.updateMany({
+    where: { id: messageId, conversationId, senderId: userId, deletedAt: null },
+    data: { deletedAt: new Date(), ciphertext: encryptMessage("[deleted]") },
+  });
   if (updated.count !== 1) throw new Error("MESSAGE_NOT_FOUND");
   return { messageId };
 }

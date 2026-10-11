@@ -27,11 +27,33 @@ export function proxy(request: NextRequest) {
   if (process.env.NODE_ENV === "production") response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   if (request.nextUrl.pathname.startsWith("/invite/")) response.headers.set("Cache-Control", "no-store");
   const pathname = request.nextUrl.pathname;
-  if (pathname.startsWith("/api/") && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
-    const origin = request.headers.get("origin");
-    const appOrigin = new URL(process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin).origin;
-    if (origin && origin !== appOrigin) return new NextResponse(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { "content-type": "application/json" } });
+  if (
+  pathname.startsWith("/api/") &&
+  ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
+) {
+  const origin = request.headers.get("origin");
+  const appOrigin = new URL(
+    process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin
+  ).origin;
+
+  const allowedOrigins = new Set([appOrigin]);
+
+  // Allow local development while testing through ngrok.
+  if (process.env.NODE_ENV !== "production") {
+    allowedOrigins.add("http://localhost:3000");
+    allowedOrigins.add("http://127.0.0.1:3000");
   }
+
+  if (origin && !allowedOrigins.has(origin)) {
+    return new NextResponse(
+      JSON.stringify({ error: "forbidden" }),
+      {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }
+}
   return response;
 }
 

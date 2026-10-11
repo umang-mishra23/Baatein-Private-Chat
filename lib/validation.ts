@@ -7,3 +7,8 @@ export const usernameUpdateSchema = z.object({ username: usernameSchema });
 export const sessionBootstrapSchema = z.object({});
 export const messageSchema = z.object({ text: z.string().trim().min(1).max(4000), clientMessageId: z.string().uuid().optional() });
 export const readReceiptSchema = z.object({ messageId: z.string().uuid() });
+
+export const reportSchema = z.object({
+  reason: z.enum(["SPAM", "HARASSMENT", "THREATS", "IMPERSONATION", "OTHER"]),
+  details: z.string().trim().max(2000).optional(),
+});

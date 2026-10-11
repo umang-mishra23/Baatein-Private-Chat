@@ -127,12 +127,14 @@ model ConversationMember {
   userId            String       @db.Uuid
   joinedAt          DateTime     @default(now())
   leftAt            DateTime?
+  hiddenAt          DateTime?
   lastReadMessageId String?      @db.Uuid
   conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([conversationId, userId])
   @@index([userId, joinedAt])
+  @@index([userId, hiddenAt])
 }
 
 model Message {

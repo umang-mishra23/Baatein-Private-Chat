@@ -1271,6 +1271,7 @@ export const ConversationMemberScalarFieldEnum = {
   userId: 'userId',
   joinedAt: 'joinedAt',
   leftAt: 'leftAt',
+  hiddenAt: 'hiddenAt',
   lastReadMessageId: 'lastReadMessageId'
 } as const
 

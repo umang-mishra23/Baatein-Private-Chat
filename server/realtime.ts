@@ -38,6 +38,20 @@ function cookieValue(header: string | undefined, name: string) {
   return null;
 }
 function userIsOnline(userId: string) { return Boolean(presence.get(userId)?.size); }
+
+async function assertLiveSession(socket: AuthenticatedSocket, ack?: (value: { ok: boolean; error?: string }) => void) {
+  const session = await db.session.findUnique({
+    where: { idHash: socket.data.sessionIdHash },
+    select: { revokedAt: true, expiresAt: true, user: { select: { status: true } } },
+  });
+  if (!session || session.revokedAt || session.expiresAt <= new Date() || session.user.status !== "ACTIVE") {
+    ack?.({ ok: false, error: "Session unavailable." });
+    socket.disconnect(true);
+    return false;
+  }
+  return true;
+}
+
 function addPresence(userId: string, socketId: string) {
   const set = presence.get(userId) ?? new Set<string>();
   set.add(socketId);
@@ -68,6 +82,7 @@ io.on("connection", async (rawSocket) => {
 
   socket.on("conversation:join", async ({ conversationId }: { conversationId?: string }, ack?: (value: { ok: boolean; error?: string; online?: boolean }) => void) => {
     try {
+      if (!(await assertLiveSession(socket, ack))) return;
       if (!conversationId || !/^[0-9a-f-]{36}$/i.test(conversationId)) return ack?.({ ok: false, error: "Conversation unavailable" });
       const conversation = await getConversationForUser(socket.data.userId, conversationId);
       socket.join(roomFor(conversationId));
@@ -89,6 +104,7 @@ io.on("connection", async (rawSocket) => {
 
   socket.on("message:send", async ({ conversationId, text }: { conversationId?: string; text?: unknown }, ack?: (value: { ok: boolean; message?: unknown; error?: string }) => void) => {
     try {
+      if (!(await assertLiveSession(socket, ack))) return;
       if (!conversationId) return ack?.({ ok: false, error: "Conversation unavailable" });
       const parsed = messageSchema.safeParse({ text });
       if (!parsed.success) return ack?.({ ok: false, error: "Message must be between 1 and 4000 characters." });
@@ -113,15 +129,18 @@ io.on("connection", async (rawSocket) => {
   });
 
   socket.on("typing:start", async ({ conversationId }: { conversationId?: string }) => {
+    if (!(await assertLiveSession(socket))) return;
     if (!conversationId) return;
     try { await getConversationForUser(socket.data.userId, conversationId); socket.to(roomFor(conversationId)).emit("typing:update", { userId: socket.data.userId, typing: true }); } catch {}
   });
   socket.on("typing:stop", async ({ conversationId }: { conversationId?: string }) => {
+    if (!(await assertLiveSession(socket))) return;
     if (!conversationId) return;
     try { await getConversationForUser(socket.data.userId, conversationId); socket.to(roomFor(conversationId)).emit("typing:update", { userId: socket.data.userId, typing: false }); } catch {}
   });
 
   socket.on("conversation:read", async ({ conversationId, messageId }: { conversationId?: string; messageId?: string }) => {
+    if (!(await assertLiveSession(socket))) return;
     if (!conversationId || !messageId) return;
     try {
       const result = await markConversationRead(socket.data.userId, conversationId, messageId);
@@ -131,6 +150,7 @@ io.on("connection", async (rawSocket) => {
 
   socket.on("message:delete", async ({ conversationId, messageId }: { conversationId?: string; messageId?: string }, ack?: (value: { ok: boolean; error?: string }) => void) => {
     try {
+      if (!(await assertLiveSession(socket, ack))) return;
       if (!conversationId || !messageId) return ack?.({ ok: false, error: "Message unavailable." });
       const result = await markMessageDeleted(socket.data.userId, conversationId, messageId);
       io.to(roomFor(conversationId)).emit("message:deleted", { conversationId, messageId: result.messageId });

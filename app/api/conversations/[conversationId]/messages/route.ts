@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const result = await listMessages(user.id, conversationId, cursor, Number.isFinite(parsedLimit) ? parsedLimit : 40);
     return NextResponse.json(result, { headers: { "cache-control": "no-store", "x-request-id": requestId } });
   } catch (error) {
-    if (error instanceof Error && error.message === "CONVERSATION_FORBIDDEN") return jsonError("Conversation unavailable.", 404, requestId);
+    if (error instanceof Error && (error.message === "CONVERSATION_FORBIDDEN" || error.message === "USER_BLOCKED" || error.message === "CONVERSATION_UNAVAILABLE")) return jsonError("Conversation unavailable.", 404, requestId);
     if (error instanceof Error && error.message === "INVALID_CURSOR") return jsonError("Invalid message cursor.", 400, requestId);
     return jsonError("Unable to load messages.", 500, requestId);
   }
