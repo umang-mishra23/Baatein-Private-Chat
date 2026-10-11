@@ -3,6 +3,7 @@ import { assertSameOrigin } from "@/server/csrf";
 import { getRequestId, jsonError } from "@/server/http";
 import { requireSessionUser } from "@/server/auth/session";
 import { cancelInvitation } from "@/server/invitations/service";
+import { isUuid } from "@/lib/validation";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const requestId = getRequestId(request);
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await assertSameOrigin();
     const user = await requireSessionUser();
     const { id } = await params;
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return jsonError("Unable to process this invitation.", 400, requestId);
+    if (!isUuid(id)) return jsonError("Unable to process this invitation.", 400, requestId);
     await cancelInvitation(user.id, id);
     return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });
   } catch (error) {

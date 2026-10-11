@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/server/auth/session";
+import { isUuid } from "@/lib/validation";
 import { assertSameOrigin } from "@/server/csrf";
 import { db } from "@/server/db";
 import { getRequestId, jsonError } from "@/server/http";
+import { allowRateLimit, rateLimitHeaders } from "@/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +14,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!user) return jsonError("Session required.", 401, requestId);
   try {
     await assertSameOrigin();
+    const rateKey = `privacy:unblock:${user.id}`;
+    if (!allowRateLimit(rateKey, 30, 60 * 1000)) return jsonError("Too many requests. Please try again later.", 429, requestId, rateLimitHeaders(rateKey));
     const { userId: blockedUserId } = await params;
-    if (!/^[0-9a-f-]{36}$/i.test(blockedUserId) || blockedUserId === user.id) return jsonError("Blocked user unavailable.", 404, requestId);
+    if (!isUuid(blockedUserId) || blockedUserId === user.id) return jsonError("Blocked user unavailable.", 404, requestId);
     const memberships = await db.conversationMember.findMany({
       where: {
         userId: user.id,

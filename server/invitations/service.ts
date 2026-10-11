@@ -234,7 +234,12 @@ export async function acceptInvitation(rawToken: string, requestedUsername: stri
   const usernameNormalized = normalizeUsername(displayName);
   const currentSession = await getSessionRecord();
   const currentUserId = currentSession?.userId ?? null;
-  if (currentUserId && currentSession.user.username && normalizeUsername(currentSession.user.username) !== usernameNormalized) {
+  if (
+  currentSession &&
+  currentUserId &&
+  currentSession.user.username &&
+  normalizeUsername(currentSession.user.username) !== usernameNormalized
+) {
     throw new Error("USERNAME_ALREADY_SET");
   }
 

@@ -20,10 +20,15 @@ export default async function ChatPage({ params }: { params: Promise<{ conversat
     notFound();
   }
   if (!conversation) notFound();
+  const clientConversation = {
+  ...conversation,
+  createdAt: conversation.createdAt.toISOString(),
+  updatedAt: conversation.updatedAt.toISOString(),
+  };
   return <main className="flex min-h-[calc(100dvh-65px)] flex-col bg-background md:min-h-[calc(100dvh-73px)]">
     <div className="mx-auto w-full max-w-5xl flex-1 px-0 md:px-4 md:py-4">
       <div className="flex h-[calc(100dvh-65px)] flex-col overflow-hidden border-border bg-card md:h-[calc(100dvh-105px)] md:rounded-3xl md:border md:shadow-xl">
-        <ChatScreen currentUser={{ id: user.id, username: user.username }} conversation={conversation} />
+        <ChatScreen currentUser={{ id: user.id, username: user.username }} conversation={clientConversation} />
       </div>
     </div>
     <div className="sr-only"><LockKeyhole /> Private server-side encrypted chat. Phone numbers are not part of chat identity.</div>

@@ -9,13 +9,20 @@ import { Brand } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DashboardAvatar } from "@/components/dashboard-avatar";
 import { Button } from "@/components/ui/button";
+import type { Route } from "next";
+import type { LucideIcon } from "lucide-react";
 
 type Props = { user: { id: string; username: string } };
-const nav = [
+const nav: Array<{
+  href: Route;
+  label: string;
+  icon: LucideIcon;
+}> = [
   { href: "/dashboard", label: "Overview", icon: Home },
   { href: "/dashboard/new-chat", label: "New chat", icon: Plus },
   { href: "/dashboard/privacy", label: "Privacy Center", icon: ShieldCheck },
 ];
+
 
 export function DashboardShell({ children, user }: Props & { children: React.ReactNode }) {
   const path = usePathname();

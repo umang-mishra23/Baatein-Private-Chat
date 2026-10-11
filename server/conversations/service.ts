@@ -5,6 +5,11 @@ import { db } from "@/server/db";
 export const MESSAGE_PAGE_SIZE = 40;
 export const MESSAGE_MAX_LENGTH = 4000;
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function assertUuid(value: string, errorCode: string) {
+  if (!UUID_PATTERN.test(value)) throw new Error(errorCode);
+}
+
 function encodeCursor(createdAt: Date, id: string) {
   return Buffer.from(`${createdAt.toISOString()}|${id}`, "utf8").toString("base64url");
 }
@@ -24,6 +29,7 @@ function decodeCursor(cursor?: string) {
 }
 
 async function requireMembership(userId: string, conversationId: string) {
+  assertUuid(conversationId, "CONVERSATION_FORBIDDEN");
   const membership = await db.conversationMember.findUnique({
     where: { conversationId_userId: { conversationId, userId } },
     select: { conversationId: true, userId: true, leftAt: true, hiddenAt: true, conversation: { select: { id: true, status: true } } },
@@ -240,6 +246,7 @@ export async function markConversationDelivered(userId: string, conversationId: 
 }
 
 export async function markConversationRead(userId: string, conversationId: string, messageId: string) {
+  assertUuid(messageId, "MESSAGE_NOT_FOUND");
   await requireMembership(userId, conversationId);
   const target = await db.message.findFirst({ where: { id: messageId, conversationId }, select: { id: true, senderId: true, createdAt: true } });
   if (!target) throw new Error("MESSAGE_NOT_FOUND");
@@ -257,6 +264,7 @@ export async function markConversationRead(userId: string, conversationId: strin
 }
 
 export async function markMessageDeleted(userId: string, conversationId: string, messageId: string) {
+  assertUuid(messageId, "MESSAGE_NOT_FOUND");
   await requireMembership(userId, conversationId);
   const peer = await getConversationPeer(userId, conversationId);
   await assertNotBlocked(userId, peer.userId);

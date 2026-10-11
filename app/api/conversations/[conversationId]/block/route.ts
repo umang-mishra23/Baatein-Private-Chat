@@ -4,6 +4,7 @@ import { assertSameOrigin } from "@/server/csrf";
 import { getConversationForUser } from "@/server/conversations/service";
 import { db } from "@/server/db";
 import { getRequestId, jsonError } from "@/server/http";
+import { allowRateLimit, rateLimitHeaders } from "@/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!user) return jsonError("Session required.", 401, requestId);
   try {
     await assertSameOrigin();
+    const rateKey = `privacy:block:${user.id}`;
+    if (!allowRateLimit(rateKey, 20, 60 * 60 * 1000)) return jsonError("Too many requests. Please try again later.", 429, requestId, rateLimitHeaders(rateKey));
     const { conversationId } = await params;
     const conversation = await getConversationForUser(user.id, conversationId);
     if (conversation.peer.id === user.id) return jsonError("Conversation unavailable.", 404, requestId);

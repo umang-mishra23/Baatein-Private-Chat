@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { inviteRequestSchema } from "@/lib/validation";
 import { hashIp, hashPhoneLookup } from "@/lib/security";
-import { getRequestId, getRequestIp, jsonError } from "@/server/http";
+import { getRequestId, getRequestIp, jsonError, jsonBodyErrorResponse, readJsonBody } from "@/server/http";
 import { assertSameOrigin } from "@/server/csrf";
 import { requireSessionUser } from "@/server/auth/session";
 import { createInvitation, listSenderInvitations } from "@/server/invitations/service";
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       return jsonError("Too many invitations. Please try again later.", 429, requestId, rateLimitHeaders(`invite:ip:${ipHash}`));
     }
 
-    const parsed = inviteRequestSchema.safeParse(await request.json());
+    const parsed = inviteRequestSchema.safeParse(await readJsonBody(request, 8 * 1024));
     if (!parsed.success) return jsonError("Unable to process this invitation.", 400, requestId);
 
     const normalizedPhone = normalizePhone(parsed.data.recipientPhone);
@@ -47,6 +47,8 @@ export async function POST(request: NextRequest) {
     securityLog({ type: "invitation_created", outcome: "success", userId: user.id, ipHash, metadata: { recipientHash: hashPhoneLookup(normalizedPhone) } });
     return NextResponse.json(result, { status: 201, headers: { "cache-control": "no-store" } });
   } catch (error) {
+    const bodyError = jsonBodyErrorResponse(error, requestId);
+    if (bodyError) return bodyError;
     if (error instanceof Error && error.message === "UNAUTHENTICATED") return jsonError("Unauthorized", 401, requestId);
     if (error instanceof Error && error.message === "INVITATION_COOLDOWN") return jsonError("Please wait before sending another invitation.", 429, requestId);
     securityLog({ type: "invitation_created", outcome: "failure" });
