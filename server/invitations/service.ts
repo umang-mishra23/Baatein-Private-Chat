@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { InvitationStatus, SmsDeliveryStatus } from "@/generated/prisma/client";
-import { decryptSensitive, encryptMessage, encryptSensitive, hashInviteToken, hashPhoneLookup, hashSessionToken, hashUserAgent, randomToken } from "@/lib/security";
+import { decryptMessage, decryptSensitive, encryptMessage, encryptSensitive, hashInviteToken, hashPhoneLookup, hashSessionToken, hashUserAgent, randomToken } from "@/lib/security";
 import { db } from "@/server/db";
 import { normalizePhone } from "@/server/normalization";
 import { getSmsProvider } from "@/server/sms/provider";
@@ -29,8 +29,20 @@ function buildInviteUrl(rawToken: string) {
   return base.toString();
 }
 
-function invitationSmsBody(rawToken: string) {
-  return `Someone wants to start a private chat with you. Tap this secure link to join. ${buildInviteUrl(rawToken)}`;
+function invitationSmsBody(
+  rawToken: string,
+  firstMessage?: string
+) {
+  const message =
+    firstMessage?.trim() ||
+    "Someone wants to start a private chat with you.";
+
+  const invitationUrl = buildInviteUrl(rawToken).trim();
+
+  return `${message}
+
+Join the private chat using this secure link:
+${invitationUrl}`;
 }
 
 function genericInvitationError() {
@@ -78,7 +90,7 @@ export async function createInvitation(input: {
   });
 
   try {
-    const delivery = await getSmsProvider().send({ to: phone, body: invitationSmsBody(rawToken) });
+    const delivery = await getSmsProvider().send({ to: phone, body: invitationSmsBody(rawToken, firstMessage) });
     await db.invitation.update({
       where: { id: invitation.id },
       data: {
@@ -168,6 +180,7 @@ export async function resendInvitation(senderId: string, invitationId: string) {
       expiresAt: true,
       lastSentAt: true,
       resendCount: true,
+      initialMessageCiphertext: true,
     },
   });
 
@@ -194,7 +207,10 @@ export async function resendInvitation(senderId: string, invitationId: string) {
   });
 
   try {
-    const delivery = await getSmsProvider().send({ to: recipientPhone, body: invitationSmsBody(rawToken) });
+    const firstMessage = invitation.initialMessageCiphertext
+      ? decryptMessage(invitation.initialMessageCiphertext)
+      : undefined;
+    const delivery = await getSmsProvider().send({ to: recipientPhone, body: invitationSmsBody(rawToken, firstMessage) });
     await db.invitation.update({
       where: { id: invitation.id },
       data: { smsDeliveryStatus: SmsDeliveryStatus.SENT, smsProviderMessageId: delivery.providerMessageId },
